@@ -4,6 +4,7 @@ let charCodes = {
     newLine: '\n'.charCodeAt(0),
     nbsp: 255
 };
+
 let colors = {
     black: 'black',
     red: 'red',
@@ -11,87 +12,109 @@ let colors = {
     gray: 'gray'
 };
 
-let buffer = {
-    create: (width, height) => {
-        let size = width * height;
-        let b = {
-            width: width,
-            height: height,
-            size: size,
-            chars: new Array(size),
-            foreColors: new Array(size),
-            backColors: new Array(size)       
-        };
-        buffer.clear(b);
-        return b;
-    },
-    toHtml: (b) => {
-        let s = `<span style=\'color:${b.foreColors[0]}; background:${b.backColors[0]}\'>`;
+let createCanvas = (width, height) => {
+    let pixels = new Array(width * height);
+    for (let i = 0; i < pixels.length; i++) {
+        pixels[i] = document.createElement('span');
+    }
 
-        let temp = [b.chars[0]];
-        let flush = () => {
-            let s = String.fromCharCode(...temp);
-            while(temp.pop() !== void 0);
-            return s;
-        };
-
-        for (let i = 1; i < b.size; i++) {
-            if (i % b.width === 0) {
-                s += flush();
-                s += '<br>';
-            }
-
-            if (b.foreColors[i] == b.foreColors[i-1] && b.backColors[i] == b.backColors[i-1]) {
-                temp.push(b.chars[i]);
-            } else {
-                s += flush();
-                s += '</span>';
-                s += `<span style=\'color:${b.foreColors[i]}; background:${b.backColors[i]}\'>`;
-                temp.push(b.chars[i]);
-            }
+    let div = document.createElement('div');
+    div.style.fontFamily = 'monospace';
+    for (let row = 0; row < height; row++) {
+        for (let column = 0; column < width; column++) {
+            div.appendChild(pixels[row * width + column]);
         }
+        div.appendChild(document.createElement('br'));
+    }
+    
+    return {
+        width: width,
+        height: height,
+        pixels: pixels,
+        display: div
+    };
+};
 
-        s += flush();
-        s += '</span>';
-        return s;
+let context = {
+    create: (canvas) => {
+        let size = canvas.width * canvas.height;
+        let ctx = {
+            canvas: canvas,
+            buffer: {
+                size: size,
+                chars: new Array(size),
+                foreColors: new Array(size),
+                backColors: new Array(size)
+            }
+        };
+        context.clear(ctx);
+        return ctx;
     },
-    clear: (b, foreColor, backColor) => {
-        for (let i = 0; i < b.size; i++) {
-            b.chars[i] = charCodes.dot;
-            b.foreColors[i] = foreColor;
-            b.backColors[i] = backColor
+    clear: (ctx, color) => {
+        for (let i = 0; i < ctx.buffer.size; i++) {
+            ctx.buffer.chars[i] = charCodes.dot;
+            ctx.buffer.foreColors[i] = color;
+            ctx.buffer.backColors[i] = color
         }
     },
-    writeAt: (b, x, y, char, fore, back) => {
-        let index = y * b.width + x; 
-        b.chars[index] = typeof char === 'string' ? char.charCodeAt(0) : char;
-        b.foreColors[index] = fore || b.foreColors[index];
-        b.backColors[index] = back || b.backColors[index];
+    render: (ctx) => {
+        let pixels = ctx.canvas.pixels;
+        for (let i = 0; i < ctx.buffer.size; i++) {
+            pixels[i].innerText = String.fromCharCode(ctx.buffer.chars[i]);
+            pixels[i].style.color = ctx.buffer.foreColors[i];
+            pixels[i].style.background = ctx.buffer.backColors[i];
+        }
     },
-    writeLine: (b, x, y, string, fore, back) => {
-        for (let i = 0; i < string.length; i++) {
-            buffer.writeAt(b, x + i, y, string[i], fore, back);
+    write: (ctx, char, x, y, fore, back) => {
+        let index = y * ctx.canvas.width + x;
+        ctx.buffer.chars[index] = typeof char === 'string' ? char.charCodeAt(0) : char;
+        ctx.buffer.foreColors[index] = fore || ctx.buffer.foreColors[index];
+        ctx.buffer.backColors[index] = back || ctx.buffer.backColors[index];
+    },
+    writeLine: (ctx, line, x, y, fore, back) => {
+        for (let i = 0; i < line.length; i++) {
+            context.write(ctx, line[i], x + i, y, fore, back);
+        }
+    },
+    drawRect: (ctx, x, y, width, height, color) => {
+        let x0 = x, y0 = y, x1 = x + width - 1, y1 = y + height - 1;
+
+        context.write(ctx, '╔', x0, y0, color);
+        context.write(ctx, '╗', x1, y0, color);
+        context.write(ctx, '╝', x1, y1, color);
+        context.write(ctx, '╚', x0, y1, color);
+
+        for (let i = x + 1; i < x1; i++) {
+            context.write(ctx, '═', i, y0, color);
+            context.write(ctx, '═', i, y1, color);
+        }
+        
+        for (let i = y + 1; i < y1; i++) {
+            context.write(ctx, '║', x0, i, color);
+            context.write(ctx, '║', x1, i, color);
         }
     }
 };
 
 window.onload = () => {
-    let canvas = document.createElement('div');
-    document.body.appendChild(canvas);
-    canvas.style.fontFamily = 'monospace';
-    
-    let b = buffer.create(80, 25);
-    buffer.clear(b, colors.gray, colors.black);
-    canvas.innerHTML += buffer.toHtml(b);
+    let canvas = createCanvas(80, 25);
+    document.body.appendChild(canvas.display);
 
-    let x = Math.floor(b.width / 2 - 'ASCII'.length / 2);
-    let y = -1;
+    let ctx = context.create(canvas);
+    context.clear(ctx, colors.black);
+    context.drawRect(ctx, 0, 0, canvas.width, canvas.height, 'white');
+    context.render(ctx);
+
+    let x = Math.floor(canvas.width / 2 - 'ASCII'.length / 2);
+    let y = 0;
+
     setInterval(function on() {
-        y++; if (y >= b.height) y = 0;
+        y++; if (y >= canvas.height - 1) y = 1;
 
-        buffer.clear(b, colors.gray, colors.black);
-        buffer.writeLine(b, x, y, 'ASCII', 'lightblue');
-        canvas.innerHTML = buffer.toHtml(b);
+        context.clear(ctx, colors.black);
+        context.drawRect(ctx, 0, 0, canvas.width, canvas.height, 'white');
+        context.writeLine(ctx, 'ASCII', x, y, 'lightblue');
+
+        context.render(ctx);
     }, 1000);
-
 };
